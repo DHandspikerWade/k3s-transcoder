@@ -2,6 +2,7 @@
 
 INPUT_DIR="$1"
 OUTPUT_DIR="$2"
+DEFAULT_EXTRA_ARGS="--previews=60 "
 
 # As a function because I should be able to check from transcoder POV later rather than the script runner.
 function file_exists() {
@@ -20,13 +21,13 @@ function job_exists() {
 }
 
 function submit_job() {
-    preset="$1"
-    input="$2"
-    output="$3"
-    extra_args="$4"
+    local preset="$1"
+    local input="$2"
+    local output="$3"
+    local extra_args=$(echo "$4" | sed "s/\"/'/g")
 
     # Hash to refer back to the job later
-    job_hash=$(echo -n "$preset $input $output $extra_args" | md5sum | awk '{ print tolower($1) }')
+    local job_hash=$(echo -n "$preset $input $output $extra_args" | md5sum | awk '{ print tolower($1) }')
 
     if job_exists "$job_hash"; then
         echo "Job already exists!"
@@ -41,7 +42,8 @@ function submit_job() {
         .metadata.labels.transcode_hash = \"$job_hash\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |
-        (.spec.template.spec.containers[0].env[] | select(.name == \"OUTPUT_FILE\")).value = \"$output\"
+        (.spec.template.spec.containers[0].env[] | select(.name == \"OUTPUT_FILE\")).value = \"$output\" |
+        (.spec.template.spec.containers[0].env[] | select(.name == \"HANDBRAKE_ARGS\")).value = \"$extra_args\"
     " | kubectl create -f -
 }
 
@@ -71,23 +73,43 @@ function each_input() {
     local tracks=$(echo "$media_info"| jq '.media.track | length')
 
     echo "Checking $1"
-    # echo "Has $tracks"
+
+    # TODO: Clean-up duplicate file checking code
 
     for i in $(seq 0 $(($tracks - 1)))
     do
+        local is_hdr=0
         local track_data="$(echo "$media_info"| jq '.media.track['$i']')"
         if [ "$(echo "$track_data"| jq '.["@type"]')" = '"Video"' ]; then
 
              # Only HDR content cares about how bright the mastering was, assume if mentioned it's HDR
             if [ $(echo "$track_data"| jq '. | has("MasteringDisplay_Luminance")') = 'true' ]; then
+                is_hdr=1
                 echo "Found HDR video"
 
-                possible_file="$(create_suffix_output "$1" " - SDR")"
-
+                local possible_file="$(create_suffix_output "$1" " - SDR")"
                 if file_exists "$possible_file"; then
                     echo "$possible_file already exists"
                 else
-                    submit_job "HDR to SDR" "$1" "$possible_file"
+                    submit_job "HDR to SDR" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS"
+                fi  
+            fi
+        fi
+
+        if  [ "$(echo "$track_data"| jq '.["@type"]')" = '"Text"' ]; then
+            local lower_title="$(echo "$track_data"| jq '.["Title"]' | awk '{ print tolower($0) }')"
+
+            if [[ "$lower_title" =~ (signs)|(songs) ]]; then
+                echo "Found subtitle for signs/songs"
+
+                local possible_file="$(create_suffix_output "$1" " - Burn-in")"
+                # Streaming preset uses webm to compatibility 
+                possible_file="${possible_file%.mkv}.webm"
+                if file_exists "$possible_file"; then
+                    echo "$possible_file already exists"
+                else
+                    local subtitle_position="$(echo "$track_data"| jq -r '.["@typeorder"]')"
+                    submit_job "Streaming" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1"
                 fi  
             fi
         fi
