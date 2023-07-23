@@ -49,11 +49,11 @@ function submit_job() {
 
 function create_suffix_output() {
     local known_suffixes=(
+        '- Bluray-2160p Remux' # Made the mistake using Sonarr's naming for early rips and need to check before "- Bluray"
         '- DVD'
         '- Bluray'
         '- UHD'
         '- HDR'
-        '- Bluray-2160p Remux' # Made the mistake using Sonarr's naming for early rips
         '- Super Duper UHD' # Deadpool 2 has multiple UHD discs
     )
     local old_name=$( basename "$1")
