@@ -2,7 +2,7 @@
 
 INPUT_DIR="$1"
 OUTPUT_DIR="$2"
-DEFAULT_EXTRA_ARGS="--previews=60 "
+DEFAULT_EXTRA_ARGS="--previews=60 --json "
 
 # As a function because I should be able to check from transcoder POV later rather than the script runner.
 function file_exists() {
