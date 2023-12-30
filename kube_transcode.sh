@@ -50,6 +50,7 @@ function submit_job() {
 function create_suffix_output() {
     local known_suffixes=(
         '- Bluray-2160p Remux' # Made the mistake using Sonarr's naming for early rips and need to check before "- Bluray"
+        '- Bluray AV1'
         '- DVD'
         '- Bluray'
         '- UHD'
