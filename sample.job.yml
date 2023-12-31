@@ -1,0 +1,56 @@
+###
+# Rename this file to "template.job"
+###
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: transcode-
+  namespace: "SET BY SCRIPT"
+spec:
+  ttlSecondsAfterFinished: 500
+  backoffLimit: 5
+  template:
+    spec:
+      securityContext:
+        runAsUser: 1000
+      containers:
+      - name: transcoding
+        image: handspiker2/handbrake-transcode-job:latest
+        env:
+          - name: PRESET_NAME
+            value: "SET BY SCRIPT"
+          - name: INPUT_FILE
+            value: "SET BY SCRIPT"
+          - name: OUTPUT_FILE
+            value: "SET BY SCRIPT"
+          - name: HANDBRAKE_ARGS
+            value: "SET BY SCRIPT"
+        resources:
+          requests:
+            cpu: "1"
+            # Converting UHD using a lot of memory
+            memory: "6.5Gi"
+          limits:
+            cpu: "3"
+        volumeMounts:
+        - name: input
+          mountPath: /input
+        - name: output
+          mountPath: /output
+        - name: storage
+          mountPath: /storage
+      volumes:
+        - name: input
+          nfs:
+            server: example.local
+            path: "/directory/with/input/files"
+        - name: output
+          nfs:
+            server: nas.lan.spikedhand.com
+            server: example.local
+            path: "/directory/for/output/files"
+        - name: storage
+          emptyDir: 
+            sizeLimit: 20Gi
+      restartPolicy: Never
