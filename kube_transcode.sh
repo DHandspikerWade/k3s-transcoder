@@ -2,7 +2,8 @@
 
 INPUT_DIR="$1"
 OUTPUT_DIR="$2"
-DEFAULT_EXTRA_ARGS="--previews=60 --json "
+DEFAULT_EXTRA_ARGS="--previews=60 --json"
+NAMESPACE=transcode
 
 # As a function because I should be able to check from transcoder POV later rather than the script runner.
 function file_exists() {
@@ -16,7 +17,7 @@ function trim_input_dir() {
 }
 
 function job_exists() {
-    kubectl get job -l transcode_hash -o jsonpath='{.items[*].metadata.labels.transcode_hash}' | grep "$1" > /dev/null
+    kubectl --namespace "$NAMESPACE" get job -l transcode_hash -o jsonpath='{.items[*].metadata.labels.transcode_hash}' | grep "$1" > /dev/null
     return $?
 }
 
@@ -40,11 +41,12 @@ function submit_job() {
     cat template.job | yq "
         .metadata.labels.creator = \"$(basename "$0")\" |
         .metadata.labels.transcode_hash = \"$job_hash\" |
+        .metadata.namespace = \"$NAMESPACE\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"OUTPUT_FILE\")).value = \"$output\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"HANDBRAKE_ARGS\")).value = \"$extra_args\"
-    " | kubectl create -f -
+    " | kubectl  --namespace "$NAMESPACE" create -f -
 }
 
 function create_suffix_output() {
@@ -105,6 +107,7 @@ function each_input() {
 
                 local possible_file="$(create_suffix_output "$1" " - Burn-in")"
                 # Streaming preset uses webm to compatibility 
+                # TODO: get the file type from the preset
                 possible_file="${possible_file%.mkv}.webm"
                 if file_exists "$possible_file"; then
                     echo "$possible_file already exists"
