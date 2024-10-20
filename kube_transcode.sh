@@ -51,6 +51,8 @@ function submit_job() {
 
 function create_suffix_output() {
     local known_suffixes=(
+        '(WEBDL-1080p)'
+        '(Bluray-1080p)'
         '- Bluray-2160p Remux' # Made the mistake using Sonarr's naming for early rips and need to check before "- Bluray"
         '- Bluray AV1'
         '- DVD'
@@ -101,20 +103,38 @@ function each_input() {
 
         if  [ "$(echo "$track_data"| jq '.["@type"]')" = '"Text"' ]; then
             local lower_title="$(echo "$track_data"| jq '.["Title"]' | awk '{ print tolower($0) }')"
+            local language="$(echo "$track_data"| jq '.["Language"]' | awk '{ print tolower($0) }')"
+            local forced="$(echo "$track_data"| jq '.["Forced"]' | awk '{ print tolower($0) }')"
+            local default="$(echo "$track_data"| jq '.["Default"]' | awk '{ print tolower($0) }')"
 
-            if [[ "$lower_title" =~ (signs)|(songs) ]]; then
-                echo "Found subtitle for signs/songs"
 
-                local possible_file="$(create_suffix_output "$1" " - Burn-in")"
-                # Streaming preset uses webm to compatibility 
-                # TODO: get the file type from the preset
-                possible_file="${possible_file%.mkv}.webm"
-                if file_exists "$possible_file"; then
-                    echo "$possible_file already exists"
-                else
-                    local subtitle_position="$(echo "$track_data"| jq -r '.["@typeorder"]')"
-                    submit_job "Streaming" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1"
-                fi  
+            if [[ "$language" = '"en"' ]]; then
+                local burnin=0
+
+                if [[ "$lower_title" =~ (signs)|(songs) ]]; then
+                    burnin=1
+                    echo "Found song"
+                fi
+
+                if [[ "$forced" = '"yes"' ]]; then
+                    burnin=1
+                    echo "found force"
+                fi
+
+                if [[ $burnin -gt 0 ]]; then
+                    echo "Found subtitle for signs/songs or forced"
+
+                    local possible_file="$(create_suffix_output "$1" " - Burn-in")"
+                    # Streaming preset uses webm to compatibility 
+                    # TODO: get the file type from the preset
+                    possible_file="${possible_file%.mkv}.webm"
+                    if file_exists "$possible_file"; then
+                        echo "$possible_file already exists"
+                    else
+                        local subtitle_position="$(echo "$track_data"| jq -r '.["@typeorder"]')"
+                        submit_job "Streaming" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1"
+                    fi  
+                fi
             fi
         fi
     done 
@@ -122,4 +142,4 @@ function each_input() {
 
 while IFS= read -d '' filename; do
   each_input "$filename"
-done < <(find "$INPUT_DIR"  -maxdepth 10 -type f \( -iname '*.mkv' -o -iname '*.mp4' -o -iname '*.webm' \) -print0 )
+done < <(find "$INPUT_DIR"  -maxdepth 10 -type f \( -iname '*.mkv' -o -iname '*.mp4' -o -iname '*.webm' \) -print0 | sort -z)
