@@ -1,0 +1,7 @@
+# Ignore any files used for testing
+**/*.mkv
+**/*.mkv
+**/*.webm
+
+# Ignore the local template used for testing. Likely includes cluster specific options 
+template.job
