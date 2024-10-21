@@ -76,6 +76,7 @@ function create_suffix_output() {
 function each_input() {
     local media_info=$(mediainfo --Output=JSON --Language=raw "$1")
     local tracks=$(echo "$media_info"| jq '.media.track | length')
+    local preview_count=60
 
     echo "Checking $1"
 
@@ -86,6 +87,18 @@ function each_input() {
         local is_hdr=0
         local track_data="$(echo "$media_info"| jq '.media.track['$i']')"
         if [ "$(echo "$track_data"| jq '.["@type"]')" = '"Video"' ]; then
+                preview_count=$(echo '(' $(echo "$track_data" | jq .Duration --raw-output) / 60 ') + 1'| bc)
+                echo "previewing $preview_count for " $(echo "$track_data" | jq .Duration --raw-output)
+
+                # Safety catch for counting errors or sub-minute videos 
+                if [ "$preview_count" -lt 10 ]; then
+                    preview_count=10
+                fi
+
+                # Over three hours, we don't need a frame a minute
+                if [ "$preview_count" -gt 180 ]; then
+                    preview_count=180
+                fi
 
              # Only HDR content cares about how bright the mastering was, assume if mentioned it's HDR
             if [ $(echo "$track_data"| jq '. | has("MasteringDisplay_Luminance")') = 'true' ]; then
@@ -96,8 +109,8 @@ function each_input() {
                 if file_exists "$possible_file"; then
                     echo "$possible_file already exists"
                 else
-                    submit_job "HDR to SDR" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS"
-                fi  
+                    submit_job "HDR to SDR" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS --json --previews=$preview_count"
+                fi
             fi
         fi
 
@@ -132,8 +145,9 @@ function each_input() {
                         echo "$possible_file already exists"
                     else
                         local subtitle_position="$(echo "$track_data"| jq -r '.["@typeorder"]')"
-                        submit_job "Streaming" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1"
-                    fi  
+                        echo  "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1 --json --previews=$preview_count"
+                        submit_job "Streaming" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1 --json --previews=$preview_count"
+                    fi
                 fi
             fi
         fi
