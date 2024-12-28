@@ -47,7 +47,6 @@ spec:
             path: "/directory/with/input/files"
         - name: output
           nfs:
-            server: nas.lan.spikedhand.com
             server: example.local
             path: "/directory/for/output/files"
         - name: storage
