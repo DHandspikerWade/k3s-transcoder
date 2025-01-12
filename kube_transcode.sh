@@ -2,7 +2,7 @@
 
 INPUT_DIR="$1"
 OUTPUT_DIR="$2"
-DEFAULT_EXTRA_ARGS="--previews=60 --json"
+DEFAULT_EXTRA_ARGS="--json"
 NAMESPACE=transcode
 
 # As a function because I should be able to check from transcoder POV later rather than the script runner.
@@ -29,14 +29,12 @@ function submit_job() {
 
     # Hash to refer back to the job later
     local job_hash=$(echo -n "$preset $input $output $extra_args" | md5sum | awk '{ print tolower($1) }')
-
     if job_exists "$job_hash"; then
         echo "Job already exists!"
 
         # Is a duplicate an error? I think slient "ok" is fine
         return 0
     fi
-
     # yq insists on double quotes for a reason unclear to me
     cat template.job | yq "
         .metadata.labels.creator = \"$(basename "$0")\" |
@@ -53,13 +51,12 @@ function create_suffix_output() {
     local known_suffixes=(
         '(WEBDL-1080p)'
         '(Bluray-1080p)'
-        '- Bluray-2160p Remux' # Made the mistake using Sonarr's naming for early rips and need to check before "- Bluray"
+        '- Bluray-2160p Remux' # Need to check before "- Bluray"
         '- Bluray AV1'
         '- DVD'
         '- Bluray'
         '- UHD'
         '- HDR'
-        '- Super Duper UHD' # Deadpool 2 has multiple UHD discs
     )
     local old_name=$( basename "$1")
     local name="${old_name%.*}"
