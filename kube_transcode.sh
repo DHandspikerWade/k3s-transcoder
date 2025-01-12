@@ -147,7 +147,13 @@ function each_input() {
                     if file_exists "$possible_file"; then
                         echo "$possible_file already exists"
                     else
-                        local subtitle_position="$(echo "$track_data"| jq -r '.["@typeorder"]')"
+                        local subtitle_position="$(echo "$track_data"| jq -r '.["@typeorder"]' --raw-output)"
+
+                        if [[ "$subtitle_position" = "null" ]]; then
+                            echo "Missing typeorder on subtitle. Assuming an index #1."
+                            subtitle_position=1
+                        fi
+
                         echo  "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1 --json --previews=$preview_count"
                         submit_job "Streaming" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1 --json --previews=$preview_count"
                     fi
