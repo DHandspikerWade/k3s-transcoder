@@ -35,6 +35,7 @@ function submit_job() {
         # Is a duplicate an error? I think slient "ok" is fine
         return 0
     fi
+
     # yq insists on double quotes for a reason unclear to me
     cat template.job | yq "
         .metadata.labels.creator = \"$(basename "$0")\" |
@@ -43,7 +44,10 @@ function submit_job() {
         (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"OUTPUT_FILE\")).value = \"$output\" |
-        (.spec.template.spec.containers[0].env[] | select(.name == \"HANDBRAKE_ARGS\")).value = \"$extra_args\"
+        (.spec.template.spec.containers[0].env[] | select(.name == \"HANDBRAKE_ARGS\")).value = \"$extra_args\" |
+        .spec.podFailurePolicy.rules[0].action = \"Ignore\" |
+        .spec.podFailurePolicy.rules[0].onPodConditions[0].type = \"DisruptionTarget\"
+
     " | kubectl  --namespace "$NAMESPACE" create -f -
 }
 
