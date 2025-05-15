@@ -1,7 +1,8 @@
 # Ignore any files used for testing
 **/*.mkv
-**/*.mkv
+**/*.mp4
 **/*.webm
 
 # Ignore the local template used for testing. Likely includes cluster specific options 
 template.job
+transcode.yml

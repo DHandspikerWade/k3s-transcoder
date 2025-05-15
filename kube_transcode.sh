@@ -36,10 +36,23 @@ function submit_job() {
         return 0
     fi
 
+    local template_name='transcode.yml'
+    if [ ! -f "$template_name" ] && [ -f 'template.job' ]; then
+        template_name='template.job'
+    fi
+
+    echo "$template_name"
+
+    if [ ! -f "$template_name" ]; then
+        echo "No job template found"
+        return 1
+    fi
+
     # yq insists on double quotes for a reason unclear to me
-    cat template.job | yq "
+    cat "$template_name" | yq "
         .metadata.labels.creator = \"$(basename "$0")\" |
         .metadata.labels.transcode_hash = \"$job_hash\" |
+        .metadata.labels.handbrake_preset = \"$preset\" |
         .metadata.namespace = \"$NAMESPACE\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |

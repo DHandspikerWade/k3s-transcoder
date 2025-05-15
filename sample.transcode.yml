@@ -1,5 +1,5 @@
 ###
-# Rename this file to "template.job"
+# Rename this file to "transcode.yml"
 ###
 
 apiVersion: batch/v1
