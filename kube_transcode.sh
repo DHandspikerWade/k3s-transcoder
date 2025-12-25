@@ -161,12 +161,6 @@ function each_input() {
                     echo "found force"
                 fi
 
-                if [[ "$default" = '"yes"' ]]; then
-                    burnin=1
-                    echo "found default"
-                fi
-
-
                 if [[ $burnin -gt 0 ]]; then
                     echo "Found subtitle for signs/songs or forced"
 
