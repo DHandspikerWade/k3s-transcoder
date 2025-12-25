@@ -16,6 +16,19 @@ function trim_input_dir() {
     php -r 'echo ltrim(substr($argv[2], strlen($argv[1]) * 1), "/");' "$INPUT_DIR" "$1"
 }
 
+function preset_to_label() {
+    local value
+
+    # Lowercase -> remove special -> make it start with a letter -> remove duplicates
+    value="$(echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g' | sed 's/^[^a-z0-9]*//' | sed 's/--+/-/g')"
+    # Limit to 64 characters
+    value="${value:0:63}"
+    # Needs to also end in a letter
+    value="$(echo "$value" | sed 's/[^a-z0-9]+$//')"
+
+    echo "$value"
+}
+
 function job_exists() {
     kubectl --namespace "$NAMESPACE" get job -l transcode_hash -o jsonpath='{.items[*].metadata.labels.transcode_hash}' | grep "$1" > /dev/null
     return $?
@@ -52,7 +65,8 @@ function submit_job() {
     cat "$template_name" | yq "
         .metadata.labels.creator = \"$(basename "$0")\" |
         .metadata.labels.transcode_hash = \"$job_hash\" |
-        .metadata.labels.handbrake_preset = \"$preset\" |
+        .metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
+        .metadata.annotations.handbrake_preset = \"$preset\" |
         .metadata.namespace = \"$NAMESPACE\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |
@@ -60,7 +74,6 @@ function submit_job() {
         (.spec.template.spec.containers[0].env[] | select(.name == \"HANDBRAKE_ARGS\")).value = \"$extra_args\" |
         .spec.podFailurePolicy.rules[0].action = \"Ignore\" |
         .spec.podFailurePolicy.rules[0].onPodConditions[0].type = \"DisruptionTarget\"
-
     " | kubectl  --namespace "$NAMESPACE" create -f -
 }
 
