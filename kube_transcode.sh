@@ -81,8 +81,11 @@ function create_suffix_output() {
     local known_suffixes=(
         '(WEBDL-1080p)'
         '(Bluray-1080p)'
+        '(WEBDL-2160p)'
+        '(DVD)'
         '- Bluray-2160p Remux' # Need to check before "- Bluray"
         '- Bluray AV1'
+        '- DVD AV1'
         '- DVD'
         '- Bluray'
         '- UHD'
@@ -137,6 +140,16 @@ function each_input() {
                     echo "$possible_file already exists"
                 else
                     submit_job "HDR to SDR" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS --json --previews=$preview_count"
+                fi
+            fi
+
+            if [ $(echo "$track_data" | jq -r '.ScanType' ) = 'Interlaced' ]; then
+                echo "Found interlaced video"
+                local possible_file="$(create_suffix_output "$1" " - Streaming")"
+                if file_exists "$possible_file"; then
+                    echo "$possible_file already exists"
+                else
+                    submit_job "Streaming" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS --json --previews=$preview_count"
                 fi
             fi
         fi
