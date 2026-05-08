@@ -156,12 +156,12 @@ function each_input() {
 
         if  [ "$(echo "$track_data"| jq '.["@type"]')" = '"Text"' ]; then
             local lower_title="$(echo "$track_data"| jq '.["Title"]' | awk '{ print tolower($0) }')"
-            local language="$(echo "$track_data"| jq '.["Language"]' | awk '{ print tolower($0) }')"
+            local language="$(echo "$track_data"| jq -r '.["Language"]' | awk '{ print tolower($0) }')"
             local forced="$(echo "$track_data"| jq '.["Forced"]' | awk '{ print tolower($0) }')"
             local default="$(echo "$track_data"| jq '.["Default"]' | awk '{ print tolower($0) }')"
 
 
-            if [[ "$language" = '"en"' ]]; then
+            if [[ "$language" = en* ]]; then
                 local burnin=0
 
                 if [[ "$lower_title" =~ (signs)|(songs) ]]; then
