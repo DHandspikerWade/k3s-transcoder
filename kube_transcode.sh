@@ -79,8 +79,20 @@ function submit_job() {
 
 function create_suffix_output() {
     local known_suffixes=(
+        '(SDTV)'
+        '(HDTV-480p)'
+        '(HDTV-720p)'
+        '(HDTV-1080p)'
+        '(WEBRip-480p)'
+        '(WEBDL-480p)'
+        '(Bluray-480p)'
+        '(WEBRip-720p)'
+        '(WEBDL-720p)'
+        '(Bluray-720p)'
+        '(WEBRip-1080p)'
         '(WEBDL-1080p)'
         '(Bluray-1080p)'
+        '(WEBRip-2160p)'
         '(WEBDL-2160p)'
         '(DVD)'
         '- Bluray-2160p Remux' # Need to check before "- Bluray"
