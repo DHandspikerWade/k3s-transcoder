@@ -50,11 +50,10 @@ function submit_job() {
     fi
 
     local template_name='transcode.yml'
+    # Fallback to older template files
     if [ ! -f "$template_name" ] && [ -f 'template.job' ]; then
         template_name='template.job'
     fi
-
-    echo "$template_name"
 
     if [ ! -f "$template_name" ]; then
         echo "No job template found"
@@ -67,6 +66,10 @@ function submit_job() {
         .metadata.labels.transcode_hash = \"$job_hash\" |
         .metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
         .metadata.annotations.handbrake_preset = \"$preset\" |
+        .spec.template.metadata.labels.creator = \"$(basename "$0")\" |
+        .spec.template.metadata.labels.transcode_hash = \"$job_hash\" |
+        .spec.template.metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
+        .spec.template.metadata.annotations.handbrake_preset = \"$preset\" |
         .metadata.namespace = \"$NAMESPACE\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
         (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |
@@ -185,6 +188,7 @@ function each_input() {
                     burnin=1
                     echo "found force"
                 fi
+
 
                 if [[ $burnin -gt 0 ]]; then
                     echo "Found subtitle for signs/songs or forced"
