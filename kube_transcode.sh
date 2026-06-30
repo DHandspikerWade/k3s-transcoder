@@ -122,10 +122,27 @@ function each_input() {
     local media_info=$(mediainfo --Output=JSON --Language=raw "$1")
     local tracks=$(echo "$media_info"| jq '.media.track | length')
     local preview_count=60
+    local has_english_audio=0
 
     echo "Checking $1"
 
     # TODO: Clean-up duplicate file checking code
+
+    for i in $(seq 0 $(($tracks - 1)))
+    do
+        local track_data="$(echo "$media_info"| jq '.media.track['$i']')"
+        if [ "$(echo "$track_data"| jq '.["@type"]')" = '"Audio"' ]; then
+            local language="$(echo "$track_data"| jq -r '.["Language"]' | awk '{ print tolower($0) }')"
+
+            if [[ "$language" = en* ]]; then
+                has_english_audio=1
+            fi
+        fi
+    done
+
+    if [[ $has_english_audio -eq 0 ]]; then
+        echo "No English audio found"
+    fi
 
     for i in $(seq 0 $(($tracks - 1)))
     do
@@ -189,6 +206,12 @@ function each_input() {
                     echo "found force"
                 fi
 
+                if [[ $has_english_audio -eq 0 ]]; then
+                    if [[ "$default" = '"yes"' ]]; then
+                        burnin=1
+                        echo "found default"
+                    fi
+                fi
 
                 if [[ $burnin -gt 0 ]]; then
                     echo "Found subtitle for signs/songs or forced"
@@ -207,7 +230,6 @@ function each_input() {
                             subtitle_position=1
                         fi
 
-                        echo  "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1 --json --previews=$preview_count"
                         submit_job "Streaming" "$1" "$possible_file" "$DEFAULT_EXTRA_ARGS -s $subtitle_position --subtitle-burned 1 --json --previews=$preview_count"
                     fi
                 fi
