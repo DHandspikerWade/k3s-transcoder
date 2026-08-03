@@ -5,10 +5,68 @@ OUTPUT_DIR="$2"
 DEFAULT_EXTRA_ARGS="--json"
 NAMESPACE=transcode
 
+function get_template_file() {
+    local template_name='transcode.yml'
+    # Fallback to older template files
+    if [ ! -f "$template_name" ] && [ -f 'template.job' ]; then
+        template_name='template.job'
+    fi
+
+    if [ ! -f "$template_name" ]; then
+        echo "No job template found" 1>&2
+        return 1
+    fi
+
+    echo $template_name
+}
+
 # As a function because I should be able to check from transcoder POV later rather than the script runner.
 function file_exists() {
-    test -e "$1"
-    return $?
+    local template="$(get_template_file)"
+    local path="$1"
+
+    local pod_name="transcode-check-$(date +%s)-$RANDOM"
+
+    local volumes
+    local mounts
+
+    volumes="$(yq '.spec.template.spec.volumes' "$template")"
+    mounts="$(yq '.spec.template.spec.containers[0].volumeMounts' "$template")"
+
+    cat <<EOF | yq ".spec.volumes = load(\"${template}\").spec.template.spec.volumes | .spec.containers[0].volumeMounts = load(\"${template}\").spec.template.spec.containers[0].volumeMounts" | kubectl --namespace "$NAMESPACE" create -f - >/dev/null
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${pod_name}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: command
+      image: busybox
+      command:
+        - sh
+        - -c
+        - cd /output && test -e '$path'
+EOF
+
+    kubectl --namespace "$NAMESPACE" wait --for=condition=initialized pod/"$pod_name" --timeout=180s >/dev/null
+    
+    # Wait until the pod finishes
+    until test -n "$(kubectl --namespace "$NAMESPACE" get pod/"$pod_name" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')" ; do 
+        sleep 1
+    done
+
+    local exit_code
+    exit_code="$(kubectl --namespace "$NAMESPACE" get pod "$pod_name" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')"
+
+    kubectl --namespace "$NAMESPACE" delete pod "$pod_name" --ignore-not-found >/dev/null
+
+    if [ $exit_code == "0" ] ; then 
+        return 0;
+    fi 
+
+    # Say the file is missing if any non-zero response. The transcoder will do its own checks too
+    return 1;
 }
 
 function trim_input_dir() {
@@ -49,35 +107,26 @@ function submit_job() {
         return 0
     fi
 
-    local template_name='transcode.yml'
-    # Fallback to older template files
-    if [ ! -f "$template_name" ] && [ -f 'template.job' ]; then
-        template_name='template.job'
+    if get_template_file > /dev/null; then
+        # yq insists on double quotes for a reason unclear to me
+        cat "$(get_template_file)" | yq "
+            .metadata.labels.creator = \"$(basename "$0")\" |
+            .metadata.labels.transcode_hash = \"$job_hash\" |
+            .metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
+            .metadata.annotations.handbrake_preset = \"$preset\" |
+            .spec.template.metadata.labels.creator = \"$(basename "$0")\" |
+            .spec.template.metadata.labels.transcode_hash = \"$job_hash\" |
+            .spec.template.metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
+            .spec.template.metadata.annotations.handbrake_preset = \"$preset\" |
+            .metadata.namespace = \"$NAMESPACE\" |
+            (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
+            (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |
+            (.spec.template.spec.containers[0].env[] | select(.name == \"OUTPUT_FILE\")).value = \"$output\" |
+            (.spec.template.spec.containers[0].env[] | select(.name == \"HANDBRAKE_ARGS\")).value = \"$extra_args\" |
+            .spec.podFailurePolicy.rules[0].action = \"Ignore\" |
+            .spec.podFailurePolicy.rules[0].onPodConditions[0].type = \"DisruptionTarget\"
+        " | kubectl --namespace "$NAMESPACE" create -f -
     fi
-
-    if [ ! -f "$template_name" ]; then
-        echo "No job template found"
-        return 1
-    fi
-
-    # yq insists on double quotes for a reason unclear to me
-    cat "$template_name" | yq "
-        .metadata.labels.creator = \"$(basename "$0")\" |
-        .metadata.labels.transcode_hash = \"$job_hash\" |
-        .metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
-        .metadata.annotations.handbrake_preset = \"$preset\" |
-        .spec.template.metadata.labels.creator = \"$(basename "$0")\" |
-        .spec.template.metadata.labels.transcode_hash = \"$job_hash\" |
-        .spec.template.metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
-        .spec.template.metadata.annotations.handbrake_preset = \"$preset\" |
-        .metadata.namespace = \"$NAMESPACE\" |
-        (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
-        (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |
-        (.spec.template.spec.containers[0].env[] | select(.name == \"OUTPUT_FILE\")).value = \"$output\" |
-        (.spec.template.spec.containers[0].env[] | select(.name == \"HANDBRAKE_ARGS\")).value = \"$extra_args\" |
-        .spec.podFailurePolicy.rules[0].action = \"Ignore\" |
-        .spec.podFailurePolicy.rules[0].onPodConditions[0].type = \"DisruptionTarget\"
-    " | kubectl  --namespace "$NAMESPACE" create -f -
 }
 
 function create_suffix_output() {
