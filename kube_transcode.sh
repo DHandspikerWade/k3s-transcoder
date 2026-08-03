@@ -26,33 +26,35 @@ function file_exists() {
     local path="$1"
 
     local pod_name="transcode-check-$(date +%s)-$RANDOM"
+    yq -n -P '
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {},
+            "spec": {
+                "restartPolicy": "Never",
+                "containers": [
+                    {
+                        "name": "command",
+                        "image": "busybox",
+                        "command": [
+                            "sh",
+                            "-c"
+                        ]
+                    }
+                ]
+            }
+        }
+    ' | POD_NAME="$pod_name" FILENAME="${path@Q}" TEMPLATE_NAME="$template" yq '
+        .spec.volumes = load(strenv(TEMPLATE_NAME)).spec.template.spec.volumes |
+        .spec.containers[0].volumeMounts = load(strenv(TEMPLATE_NAME)).spec.template.spec.containers[0].volumeMounts |
+        .metadata.name = strenv(POD_NAME) |
+        .spec.containers[0].command[2] = "cd /output && test -e " + strenv(FILENAME)
+    ' | kubectl --namespace "$NAMESPACE" create -f - >/dev/null
 
-    local volumes
-    local mounts
-
-    volumes="$(yq '.spec.template.spec.volumes' "$template")"
-    mounts="$(yq '.spec.template.spec.containers[0].volumeMounts' "$template")"
-
-    cat <<EOF | yq ".spec.volumes = load(\"${template}\").spec.template.spec.volumes | .spec.containers[0].volumeMounts = load(\"${template}\").spec.template.spec.containers[0].volumeMounts" | kubectl --namespace "$NAMESPACE" create -f - >/dev/null
-apiVersion: v1
-kind: Pod
-metadata:
-  name: ${pod_name}
-spec:
-  restartPolicy: Never
-  containers:
-    - name: command
-      image: busybox
-      command:
-        - sh
-        - -c
-        - cd /output && test -e '$path'
-EOF
-
-    kubectl --namespace "$NAMESPACE" wait --for=condition=initialized pod/"$pod_name" --timeout=180s >/dev/null
-    
+    kubectl --namespace "$NAMESPACE" wait --for=condition=initialized pod/"$pod_name" --timeout=10s >/dev/null
     # Wait until the pod finishes
-    until test -n "$(kubectl --namespace "$NAMESPACE" get pod/"$pod_name" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')" ; do 
+    until test -n "$(kubectl --namespace "$NAMESPACE" get pod/"$pod_name" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}' 2>&1)" ; do 
         sleep 1
     done
 
@@ -61,7 +63,7 @@ EOF
 
     kubectl --namespace "$NAMESPACE" delete pod "$pod_name" --ignore-not-found >/dev/null
 
-    if [ $exit_code == "0" ] ; then 
+    if [ "$exit_code" == "0" ] ; then 
         return 0;
     fi 
 
