@@ -5,6 +5,8 @@ OUTPUT_DIR="$2"
 DEFAULT_EXTRA_ARGS="--json"
 NAMESPACE=transcode
 
+FILE_CHECKER_NAME="transcode-file-check-$RANDOM"
+
 function get_template_file() {
     local template_name='transcode.yml'
     # Fallback to older template files
@@ -25,43 +27,47 @@ function file_exists() {
     local template="$(get_template_file)"
     local path="$1"
 
-    local pod_name="transcode-check-$(date +%s)-$RANDOM"
-    yq -n -P '
-        {
-            "apiVersion": "v1",
-            "kind": "Pod",
-            "metadata": {},
-            "spec": {
-                "restartPolicy": "Never",
-                "containers": [
-                    {
-                        "name": "command",
-                        "image": "busybox",
-                        "command": [
-                            "sh",
-                            "-c"
-                        ]
-                    }
-                ]
+    if [ -n "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase!=Running | grep $FILE_CHECKER_NAME)" ]; then
+        kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_NAME" --ignore-not-found >/dev/null
+        # TODO: Should actually be checking for the pod is gone but this should be rare edgecase
+        sleep 5
+    fi
+
+    if [ -z "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase=Running | grep $FILE_CHECKER_NAME)" ]; then
+        yq -n -P '
+            {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "metadata": {},
+                "spec": {
+                    "restartPolicy": "Never",
+                    "containers": [
+                        {
+                            "name": "command",
+                            "image": "busybox",
+                            "command": [
+                                "sh",
+                                "-c",
+                                "sleep 600"
+                            ]
+                        }
+                    ]
+                }
             }
-        }
-    ' | POD_NAME="$pod_name" FILENAME="${path@Q}" TEMPLATE_NAME="$template" yq '
-        .spec.volumes = load(strenv(TEMPLATE_NAME)).spec.template.spec.volumes |
-        .spec.containers[0].volumeMounts = load(strenv(TEMPLATE_NAME)).spec.template.spec.containers[0].volumeMounts |
-        .metadata.name = strenv(POD_NAME) |
-        .spec.containers[0].command[2] = "cd /output && test -e " + strenv(FILENAME)
-    ' | kubectl --namespace "$NAMESPACE" create -f - >/dev/null
+        ' | POD_NAME="$FILE_CHECKER_NAME" TEMPLATE_NAME="$template" yq '
+            .spec.volumes = load(strenv(TEMPLATE_NAME)).spec.template.spec.volumes |
+            .spec.containers[0].volumeMounts = load(strenv(TEMPLATE_NAME)).spec.template.spec.containers[0].volumeMounts |
+            .metadata.name = strenv(POD_NAME)
+        ' | kubectl --namespace "$NAMESPACE" create -f - >/dev/null
 
-    kubectl --namespace "$NAMESPACE" wait --for=condition=initialized pod/"$pod_name" --timeout=10s >/dev/null
-    # Wait until the pod finishes
-    until test -n "$(kubectl --namespace "$NAMESPACE" get pod/"$pod_name" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}' 2>&1)" ; do 
-        sleep 1
-    done
+        kubectl --namespace "$NAMESPACE" wait --for=condition=initialized pod/"$FILE_CHECKER_NAME" --timeout=60s >/dev/null
+        until test -n "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase=Running | grep $FILE_CHECKER_NAME)" ; do 
+            sleep 2
+        done
+    fi
 
-    local exit_code
-    exit_code="$(kubectl --namespace "$NAMESPACE" get pod "$pod_name" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')"
-
-    kubectl --namespace "$NAMESPACE" delete pod "$pod_name" --ignore-not-found >/dev/null
+    kubectl -n "$NAMESPACE" exec pod/"$FILE_CHECKER_NAME" -- sh -c 'cd /output && test -e '"${path@Q}" #> /dev/null 2>&1
+    local exit_code="$?"
 
     if [ "$exit_code" == "0" ] ; then 
         return 0;
@@ -292,3 +298,5 @@ function each_input() {
 while IFS= read -d '' filename; do
   each_input "$filename"
 done < <(find "$INPUT_DIR"  -maxdepth 10 -type f \( -iname '*.mkv' -o -iname '*.mp4' -o -iname '*.webm' \) -print0 | sort -z)
+
+kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_NAME" --ignore-not-found >/dev/null
