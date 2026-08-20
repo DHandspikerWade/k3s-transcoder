@@ -5,7 +5,7 @@ OUTPUT_DIR="$2"
 DEFAULT_EXTRA_ARGS="--json"
 NAMESPACE=transcode
 
-FILE_CHECKER_NAME="transcode-file-check-$RANDOM"
+FILE_CHECKER_NAME="${FILE_CHECKER_NAME:-"transcode-file-check-$RANDOM"}"
 
 function get_template_file() {
     local template_name='transcode.yml'
@@ -299,4 +299,7 @@ while IFS= read -d '' filename; do
   each_input "$filename"
 done < <(find "$INPUT_DIR"  -maxdepth 10 -type f \( -iname '*.mkv' -o -iname '*.mp4' -o -iname '*.webm' \) -print0 | sort -z)
 
-kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_NAME" --ignore-not-found >/dev/null
+if [ -z "$FILE_CHECKER_NAME" ]; then
+    # Only delete the pod if it was auto-generated
+    kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_NAME" --ignore-not-found >/dev/null
+fi
