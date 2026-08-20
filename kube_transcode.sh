@@ -27,13 +27,13 @@ function file_exists() {
     local template="$(get_template_file)"
     local path="$1"
 
-    if [ -n "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase!=Running | grep $FILE_CHECKER_NAME)" ]; then
+    if [ -n "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase!=Running 2>&1 | grep $FILE_CHECKER_NAME)" ]; then
         kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_NAME" --ignore-not-found >/dev/null
         # TODO: Should actually be checking for the pod is gone but this should be rare edgecase
         sleep 5
     fi
 
-    if [ -z "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase=Running | grep $FILE_CHECKER_NAME)" ]; then
+    if [ -z "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase=Running 2>&1 | grep $FILE_CHECKER_NAME)" ]; then
         yq -n -P '
             {
                 "apiVersion": "v1",
