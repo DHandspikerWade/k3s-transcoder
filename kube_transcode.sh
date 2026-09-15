@@ -5,7 +5,7 @@ OUTPUT_DIR="$2"
 DEFAULT_EXTRA_ARGS="--json"
 NAMESPACE=transcode
 
-FILE_CHECKER_NAME="${FILE_CHECKER_NAME:-"transcode-file-check-$RANDOM"}"
+FILE_CHECKER_POD="${FILE_CHECKER_NAME:-"transcode-file-check-$RANDOM"}"
 
 function get_template_file() {
     local template_name='transcode.yml'
@@ -27,13 +27,13 @@ function file_exists() {
     local template="$(get_template_file)"
     local path="$1"
 
-    if [ -n "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase!=Running 2>&1 | grep $FILE_CHECKER_NAME)" ]; then
-        kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_NAME" --ignore-not-found >/dev/null
+    if [ -n "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase!=Running 2>&1 | grep $FILE_CHECKER_POD)" ]; then
+        kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_POD" --ignore-not-found >/dev/null
         # TODO: Should actually be checking for the pod is gone but this should be rare edgecase
         sleep 5
     fi
 
-    if [ -z "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase=Running 2>&1 | grep $FILE_CHECKER_NAME)" ]; then
+    if [ -z "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase=Running 2>&1 | grep $FILE_CHECKER_POD)" ]; then
         yq -n -P '
             {
                 "apiVersion": "v1",
@@ -54,19 +54,19 @@ function file_exists() {
                     ]
                 }
             }
-        ' | POD_NAME="$FILE_CHECKER_NAME" TEMPLATE_NAME="$template" yq '
+        ' | POD_NAME="$FILE_CHECKER_POD" TEMPLATE_NAME="$template" yq '
             .spec.volumes = load(strenv(TEMPLATE_NAME)).spec.template.spec.volumes |
             .spec.containers[0].volumeMounts = load(strenv(TEMPLATE_NAME)).spec.template.spec.containers[0].volumeMounts |
             .metadata.name = strenv(POD_NAME)
         ' | kubectl --namespace "$NAMESPACE" create -f - >/dev/null
 
-        kubectl --namespace "$NAMESPACE" wait --for=condition=initialized pod/"$FILE_CHECKER_NAME" --timeout=60s >/dev/null
-        until test -n "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase=Running | grep $FILE_CHECKER_NAME)" ; do 
+        kubectl --namespace "$NAMESPACE" wait --for=condition=initialized pod/"$FILE_CHECKER_POD" --timeout=60s >/dev/null
+        until test -n "$(kubectl --namespace "$NAMESPACE" get pods --field-selector status.phase=Running | grep $FILE_CHECKER_POD)" ; do 
             sleep 2
         done
     fi
 
-    kubectl -n "$NAMESPACE" exec pod/"$FILE_CHECKER_NAME" -- sh -c 'cd /output && test -e '"${path@Q}" #> /dev/null 2>&1
+    kubectl -n "$NAMESPACE" exec pod/"$FILE_CHECKER_POD" -- sh -c 'cd /output && test -e '"${path@Q}" #> /dev/null 2>&1
     local exit_code="$?"
 
     if [ "$exit_code" == "0" ] ; then 
@@ -304,5 +304,5 @@ done < <(find "$INPUT_DIR"  -maxdepth 10 -type f \( -iname '*.mkv' -o -iname '*.
 
 if [ -z "$FILE_CHECKER_NAME" ]; then
     # Only delete the pod if it was auto-generated
-    kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_NAME" --ignore-not-found >/dev/null
+    kubectl --namespace "$NAMESPACE" delete pod "$FILE_CHECKER_POD" --ignore-not-found >/dev/null
 fi
