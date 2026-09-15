@@ -116,8 +116,10 @@ function submit_job() {
     fi
 
     if get_template_file > /dev/null; then
+        local arch_type=$(yq '.spec.template.spec.nodeSelector."kubernetes.io/arch" // "amd64"'  < "$(get_template_file)")
+
         # yq insists on double quotes for a reason unclear to me
-        cat "$(get_template_file)" | yq "
+        yq "
             .metadata.labels.creator = \"$(basename "$0")\" |
             .metadata.labels.transcode_hash = \"$job_hash\" |
             .metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
@@ -127,13 +129,14 @@ function submit_job() {
             .spec.template.metadata.labels.handbrake_preset = \"$(preset_to_label "$preset")\" |
             .spec.template.metadata.annotations.handbrake_preset = \"$preset\" |
             .metadata.namespace = \"$NAMESPACE\" |
+            .spec.template.spec.nodeSelector.\"kubernetes.io/arch\" = \"$arch_type\" |
             (.spec.template.spec.containers[0].env[] | select(.name == \"PRESET_NAME\")).value = \"$preset\" |
             (.spec.template.spec.containers[0].env[] | select(.name == \"INPUT_FILE\")).value = \"$input\" |
             (.spec.template.spec.containers[0].env[] | select(.name == \"OUTPUT_FILE\")).value = \"$output\" |
             (.spec.template.spec.containers[0].env[] | select(.name == \"HANDBRAKE_ARGS\")).value = \"$extra_args\" |
             .spec.podFailurePolicy.rules[0].action = \"Ignore\" |
             .spec.podFailurePolicy.rules[0].onPodConditions[0].type = \"DisruptionTarget\"
-        " | kubectl --namespace "$NAMESPACE" create -f -
+        " < "$(get_template_file)" | kubectl --namespace "$NAMESPACE" create -f -
     fi
 }
 
